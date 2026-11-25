@@ -3,40 +3,52 @@ name: Build StockSlip APK from uploaded ZIP
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches:
+      - main
 
 permissions:
   contents: read
 
-timeout-minutes: 30
-
 jobs:
   build:
+    name: Build Android APK
     runs-on: ubuntu-latest
     timeout-minutes: 30
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract StockSlip project ZIP into repository root
+      - name: Find and extract StockSlip ZIP
         shell: bash
         run: |
-          set -e
-          ZIP_FILE=$(find . -maxdepth 2 -type f -iname 'StockSlip_Project.zip' -o -iname 'StockSlip_Project*.zip' | head -n 1)
-          if [ -z "$ZIP_FILE" ];nthen
-            echo "StockSlip ZIP not found. Upload StockSlip_Project.zip first."
+          set -euo pipefail
+
+          ZIP_FILE="$(find . -maxdepth 3 -type f \( -iname 'StockSlip_Project.zip' -o -iname 'StockSlip_Project*.zip' \) -print -quit)"
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: StockSlip_Project.zip was not found in the repository."
             exit 1
           fi
+
           mkdir -p extracted
           unzip -q "$ZIP_FILE" -d extracted
-          PROJECT_DIR=$(find extracted -type f -name 'package.json' -printf '%h\n' | head -n 1)
+
+          PROJECT_DIR="$(find extracted -type f -name 'package.json' -printf '%h\n' | head -n 1)"
           if [ -z "$PROJECT_DIR" ]; then
-            echo "package.json was not found inside the uploaded ZIP."
+            echo "ERROR: package.json was not found inside the ZIP."
             exit 1
           fi
-          cp -a "$PROJECT_DIR"/. .
+
+          cp -a "$PROJECT_DIR/." .
+
           test -f package.json
+          test -f capacitor.config.json
           test -d www
+
+          # The ZIP contains its own older GitHub workflows. Remove those copies
+          # so only this corrected root workflow controls the APK build.
+          rm -f .github/workflows/build-android-apk.yml
+          rm -f .github/workflows/deploy-pages.yml
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
